@@ -42,9 +42,10 @@ export const handler: SQSHandler = async (event: any) => {
                     };
                     const params = sendEmailParams({name, email, message});
                     await client.send(new SendEmailCommand(params));
+                    console.log("Error notification email sent successfully.");
                 } catch (error: unknown) {
-                    console.log("ERROR is: ", error);
-                    // return;
+                    console.error("Failed to send error notification email: ", error);
+                    throw error;
                 }
             }
         }

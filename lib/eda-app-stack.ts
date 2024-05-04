@@ -8,7 +8,7 @@ import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as iam from "aws-cdk-lib/aws-iam";
-
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import {Construct} from "constructs";
 
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -22,23 +22,29 @@ export class EDAAppStack extends cdk.Stack {
             autoDeleteObjects: true,
             publicReadAccess: false,
         });
-
+        // create table
+        const imageTable = new dynamodb.Table(this, 'ImageTable', {
+            partitionKey: {name: 'ImageName', type: dynamodb.AttributeType.STRING},
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            tableName: 'ImageTable'
+        });
         // Integration infrastructure
-
-        const imageProcessQueue = new sqs.Queue(this, "img-created-queue", {
-            receiveMessageWaitTime: cdk.Duration.seconds(10),
-        });
-
-        const mailerQ = new sqs.Queue(this, "mailer-queue", {
-            receiveMessageWaitTime: cdk.Duration.seconds(10),
-        });
         //DLQ
         const processImageDLQ = new sqs.Queue(this, "ProcessImageDLQ", {
             queueName: "ProcessImageDLQ",
             receiveMessageWaitTime: cdk.Duration.seconds(10),
         });
+        const imageProcessQueue = new sqs.Queue(this, "img-created-queue", {
+            receiveMessageWaitTime: cdk.Duration.seconds(10),
+            deadLetterQueue: {
+                queue: processImageDLQ,
+                maxReceiveCount: 5
+            }
+        });
 
-
+        const mailerQ = new sqs.Queue(this, "mailer-queue", {
+            receiveMessageWaitTime: cdk.Duration.seconds(10),
+        });
         // Lambda functions
 
         const processImageFn = new lambdanode.NodejsFunction(
@@ -49,6 +55,10 @@ export class EDAAppStack extends cdk.Stack {
                 entry: `${__dirname}/../lambdas/processImage.ts`,
                 timeout: cdk.Duration.seconds(15),
                 memorySize: 128,
+                environment: {
+                    TABLE_NAME: imageTable.tableName,
+                    REGION: 'eu-west-1',
+                }
             }
         );
 
@@ -59,7 +69,7 @@ export class EDAAppStack extends cdk.Stack {
             entry: `${__dirname}/../lambdas/mailer.ts`,
         });
 
-        const rejectionMailerFn = new lambdanode.NodejsFunction(this, "RejectionMailerFn", {
+        const rejectionMailerFn = new lambdanode.NodejsFunction(this, "rejection-mailer-function", {
             runtime: lambda.Runtime.NODEJS_16_X,
             memorySize: 1024,
             timeout: cdk.Duration.seconds(3),
@@ -81,7 +91,6 @@ export class EDAAppStack extends cdk.Stack {
 
         newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
-        newImageTopic.addSubscription(new subs.SqsSubscription(processImageDLQ))
 
         // SQS --> Lambda
         const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
@@ -104,6 +113,8 @@ export class EDAAppStack extends cdk.Stack {
         // Permissions
 
         imagesBucket.grantRead(processImageFn);
+        // 授权 ProcessImageFn Lambda 函数访问 DynamoDB 表
+        imageTable.grantWriteData(processImageFn);
 
         processImageFn.addToRolePolicy(new iam.PolicyStatement({
             actions: ["sqs:SendMessage"],
