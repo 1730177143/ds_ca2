@@ -78,7 +78,10 @@ export class EDAAppStack extends cdk.Stack {
         const newImageTopic = new sns.Topic(this, "NewImageTopic", {
             displayName: "New Image topic",
         });
-
+        // 创建第二个 SNS 主题
+        const deleteAndUpdateTopic = new sns.Topic(this, 'DeleteAndUpdateTopic', {
+            displayName: 'Image Delete and Update Topic'
+        });
         // S3 --> SQS
         imagesBucket.addEventNotification(
             s3.EventType.OBJECT_CREATED,
@@ -148,6 +151,11 @@ export class EDAAppStack extends cdk.Stack {
 
         new cdk.CfnOutput(this, "bucketName", {
             value: imagesBucket.bucketName,
+        });
+
+        new cdk.CfnOutput(this, "deleteAndUpdateTopic", {
+            value: deleteAndUpdateTopic.topicArn,
+            exportName: "deleteAndUpdateTopic"
         });
     }
 }
