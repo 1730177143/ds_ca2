@@ -8,9 +8,10 @@ import {
     PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import {DynamoDBClient, PutItemCommand} from "@aws-sdk/client-dynamodb";
+import {DynamoDBDocumentClient} from "@aws-sdk/lib-dynamodb";
 
 const s3 = new S3Client();
-const dynamoDB = new DynamoDBClient();
+const ddb = createDDbDocClient();
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'ImageTable';
 
@@ -40,7 +41,7 @@ export const handler: SQSHandler = async (event) => {
                     };
                     await s3.send(new GetObjectCommand(params));
                     // After processing, write to DynamoDB
-                    await dynamoDB.send(new PutItemCommand({
+                    await ddb.send(new PutItemCommand({
                         TableName: TABLE_NAME,
                         Item: {
                             "ImageName": {S: srcKey}, // Use the image name as the primary key
@@ -56,3 +57,15 @@ export const handler: SQSHandler = async (event) => {
         }
     }
 };
+
+function createDDbDocClient() {
+    const ddbClient = new DynamoDBClient({region: process.env.REGION});
+    const marshallOptions = {
+        convertEmptyValues: true, removeUndefinedValues: true, convertClassInstanceToMap: true,
+    };
+    const unmarshallOptions = {
+        wrapNumbers: false,
+    };
+    const translateConfig = {marshallOptions, unmarshallOptions};
+    return DynamoDBDocumentClient.from(ddbClient, translateConfig);
+}
