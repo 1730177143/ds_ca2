@@ -24,9 +24,11 @@ export class EDAAppStack extends cdk.Stack {
         });
         // create table
         const imageTable = new dynamodb.Table(this, 'ImageTable', {
-            partitionKey: {name: 'ImageName', type: dynamodb.AttributeType.STRING},
+            stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            partitionKey: {name: "ImageName", type: dynamodb.AttributeType.STRING},
             removalPolicy: cdk.RemovalPolicy.DESTROY,
-            tableName: 'ImageTable'
+            tableName: 'ImageTable',
         });
         // Integration infrastructure
         //DLQ
@@ -75,6 +77,15 @@ export class EDAAppStack extends cdk.Stack {
             timeout: cdk.Duration.seconds(3),
             entry: `${__dirname}/../lambdas/rejectionMailer.ts`,
         });
+
+        const processDeleteFn = new lambdanode.NodejsFunction(this, "process-delete-function", {
+            runtime: lambda.Runtime.NODEJS_16_X,
+            memorySize: 1024,
+            timeout: cdk.Duration.seconds(3),
+            entry: `${__dirname}/../lambdas/processDelete.ts`,
+        });
+
+        //sns topic
         const newImageTopic = new sns.Topic(this, "NewImageTopic", {
             displayName: "New Image topic",
         });
@@ -88,12 +99,19 @@ export class EDAAppStack extends cdk.Stack {
             new s3n.SnsDestination(newImageTopic)  // Changed
         );
 
+        imagesBucket.addEventNotification(
+            s3.EventType.OBJECT_REMOVED,
+            new s3n.SnsDestination(deleteAndUpdateTopic)  // Changed
+        );
+
         newImageTopic.addSubscription(
             new subs.SqsSubscription(imageProcessQueue)
         );
 
         newImageTopic.addSubscription(new subs.SqsSubscription(mailerQ));
 
+        deleteAndUpdateTopic.addSubscription(
+            new subs.LambdaSubscription(processDeleteFn));
 
         // SQS --> Lambda
         const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
@@ -116,8 +134,8 @@ export class EDAAppStack extends cdk.Stack {
         // Permissions
 
         imagesBucket.grantRead(processImageFn);
-        // 授权 ProcessImageFn Lambda 函数访问 DynamoDB 表
         imageTable.grantWriteData(processImageFn);
+        imageTable.grantReadWriteData(processDeleteFn);
 
         processImageFn.addToRolePolicy(new iam.PolicyStatement({
             actions: ["sqs:SendMessage"],

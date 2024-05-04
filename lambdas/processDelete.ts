@@ -28,9 +28,9 @@ export const handler: SNSHandler = async (event: SNSEvent) => {
                 // Write item to DynamoDB
                 const ddbParams = await ddb.send(
                     new DeleteCommand({
-                        TableName: "ImagesTable",
+                        TableName: "ImageTable",
                         Key: {
-                            'ImageName': {S: srcKey},
+                            ImageName: srcKey,
                         }
                     })
                 );
@@ -38,9 +38,9 @@ export const handler: SNSHandler = async (event: SNSEvent) => {
         } else if (snsMessage.name) {
             const ddbParams = await ddb.send(
                 new DeleteCommand({
-                    TableName: "ImagesTable",
+                    TableName: "ImageTable",
                     Key: {
-                        'ImageName': {S: snsMessage.name},
+                        ImageName: snsMessage.name,
                     }
                 })
             );
