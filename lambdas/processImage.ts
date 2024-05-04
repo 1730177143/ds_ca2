@@ -7,8 +7,12 @@ import {
     S3Client,
     PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import {DynamoDBClient, PutItemCommand} from "@aws-sdk/client-dynamodb";
 
 const s3 = new S3Client();
+const dynamoDB = new DynamoDBClient();
+
+const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'ImageTable';
 
 export const handler: SQSHandler = async (event) => {
     console.log("Event ", JSON.stringify(event));
@@ -24,7 +28,6 @@ export const handler: SQSHandler = async (event) => {
                 // Object key may have spaces or unicode non-ASCII characters.
                 const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
 
-                let origimage = null;
                 // Check file extension
                 if (!srcKey.endsWith('.jpeg') && !srcKey.endsWith('.png')) {
                     throw new Error(`Unsupported file type for file ${srcKey}`);
@@ -35,10 +38,18 @@ export const handler: SQSHandler = async (event) => {
                         Bucket: srcBucket,
                         Key: srcKey,
                     };
-                    origimage = await s3.send(new GetObjectCommand(params));
-                    // Process the image ......
+                    await s3.send(new GetObjectCommand(params));
+                    // After processing, write to DynamoDB
+                    await dynamoDB.send(new PutItemCommand({
+                        TableName: TABLE_NAME,
+                        Item: {
+                            "ImageName": {S: srcKey}, // Use the image name as the primary key
+                            'Bucket': {S: srcBucket},
+                            'CreatedAt': {S: new Date().toISOString()}
+                        }
+                    }));
                 } catch (error) {
-                    console.error("Error processing image:", error);
+                    console.error("Error processing image or writing to DynamoDB:", error);
                     throw error;
                 }
             }
