@@ -85,6 +85,13 @@ export class EDAAppStack extends cdk.Stack {
             entry: `${__dirname}/../lambdas/processDelete.ts`,
         });
 
+        const updateTableFn = new lambdanode.NodejsFunction(this, "update-Table-function", {
+            runtime: lambda.Runtime.NODEJS_16_X,
+            memorySize: 1024,
+            timeout: cdk.Duration.seconds(3),
+            entry: `${__dirname}/../lambdas/updateTable.ts`,
+        });
+
         //sns topic
         const newImageTopic = new sns.Topic(this, "NewImageTopic", {
             displayName: "New Image topic",
@@ -112,6 +119,8 @@ export class EDAAppStack extends cdk.Stack {
 
         deleteAndUpdateTopic.addSubscription(
             new subs.LambdaSubscription(processDeleteFn));
+        deleteAndUpdateTopic.addSubscription(
+            new subs.LambdaSubscription(updateTableFn));
 
         // SQS --> Lambda
         const newImageEventSource = new events.SqsEventSource(imageProcessQueue, {
@@ -136,6 +145,7 @@ export class EDAAppStack extends cdk.Stack {
         imagesBucket.grantRead(processImageFn);
         imageTable.grantWriteData(processImageFn);
         imageTable.grantReadWriteData(processDeleteFn);
+        imageTable.grantReadWriteData(updateTableFn);
 
         processImageFn.addToRolePolicy(new iam.PolicyStatement({
             actions: ["sqs:SendMessage"],
