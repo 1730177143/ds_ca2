@@ -38,7 +38,7 @@ export class EDAAppStack extends cdk.Stack {
             receiveMessageWaitTime: cdk.Duration.seconds(10),
             deadLetterQueue: {
                 queue: processImageDLQ,
-                maxReceiveCount: 5
+                maxReceiveCount: 1
             }
         });
 
