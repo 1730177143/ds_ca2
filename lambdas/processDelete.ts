@@ -1,16 +1,12 @@
 import {SNSEvent, SNSHandler} from 'aws-lambda';
 import {
-    GetObjectCommand,
-    PutObjectCommandInput,
-    GetObjectCommandInput,
     S3Client,
-    PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import {DynamoDBClient, DeleteItemCommand, PutItemCommand} from '@aws-sdk/client-dynamodb';
 import {DeleteCommand, DynamoDBDocumentClient} from "@aws-sdk/lib-dynamodb";
 
 const s3 = new S3Client();
-const ddb = createDDbDocClient(); // Specify your AWS region
+const ddb = createDDbDocClient();
 
 export const handler: SNSHandler = async (event: SNSEvent) => {
     console.log("Event ", JSON.stringify(event));
@@ -26,24 +22,20 @@ export const handler: SNSHandler = async (event: SNSEvent) => {
                 const srcKey = decodeURIComponent(s3e.object.key.replace(/\+/g, " "));
                 // Process the image ......
                 // Write item to DynamoDB
-                const ddbParams = await ddb.send(
-                    new DeleteCommand({
-                        TableName: "ImageTable",
-                        Key: {
-                            ImageName: srcKey,
-                        }
-                    })
-                );
-            }
-        } else if (snsMessage.name) {
-            const ddbParams = await ddb.send(
-                new DeleteCommand({
+                const ddbParams = {
                     TableName: "ImageTable",
                     Key: {
-                        ImageName: snsMessage.name,
+                        ImageName: srcKey,
                     }
-                })
-            );
+                };
+                try {
+                    await ddb.send(new DeleteCommand(ddbParams));
+                    console.log(` Successfully Delete ${srcKey} from ${srcBucket} in table ImageTable `)
+                } catch (error) {
+                    console.log(` Unable to Delete ${srcKey} from ${srcBucket} in table ImageTable`)
+                    throw new Error(`Unable to Delete item with key ${srcKey} in DynamoDB.`)
+                }
+            }
         }
     }
 }
